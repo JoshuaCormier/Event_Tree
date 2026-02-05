@@ -246,22 +246,32 @@ for nid, n in st.session_state.tree_nodes.items():
     else:
         dot.node(nid, f"{n['name']}\n(P: {n['prob']:.2f})", shape='box', style='filled', fillcolor='white')
 
-    # EDGE DRAWING
-    if n['parent_id']:
-        p = st.session_state.tree_nodes[n['parent_id']]
-        if n['branch'] == "Success (Yes)":
-            lbl = f"Yes"
-            col = "#2E7D32"
-        else:
-            lbl = f"No"
-            col = "#C62828"
+        # EDGE DRAWING
+        if n['parent_id']:
+            p = st.session_state.tree_nodes[n['parent_id']]
 
-        # Add probability to edge label
-        lbl += f"\n({p.get('prob', 0) if n['branch'] == 'Success (Yes)' else 1.0 - p.get('prob', 0):.2f})"
+            # 1. SPECIAL CASE: Connection from Root (Fire Ignition)
+            # We don't want "Yes/No" here. Just a simple connector line.
+            if p['type'] == 'root':
+                lbl = ""
+                col = "#666666"  # Neutral Dark Grey
+                dot.edge(n['parent_id'], nid, label=lbl, color=col, penwidth='1.5')
 
-        dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col)
+            # 2. STANDARD CASE: Connections between Barriers
+            else:
+                if n['branch'] == "Success (Yes)":
+                    lbl = f"Yes"
+                    col = "#2E7D32"  # Green
+                else:
+                    lbl = f"No"
+                    col = "#C62828"  # Red
 
-st.graphviz_chart(dot)
+                # Add probability to edge label
+                # We calculate prob based on the PARENT's success probability
+                prob_val = p.get('prob', 0) if n['branch'] == 'Success (Yes)' else 1.0 - p.get('prob', 0)
+                lbl += f"\n({prob_val:.2f})"
+
+                dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col)
 
 # --- SUMMARY METRICS ---
 if is_risk_mode:
