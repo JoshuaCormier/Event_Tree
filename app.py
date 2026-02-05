@@ -92,7 +92,7 @@ def delete_node(node_id):
 
 
 # --- SIDEBAR ---
-st.sidebar.title("🛠️ Risk Manager")
+st.sidebar.title("Risk Manager")
 
 # 1. MODE SELECTION
 mode = st.sidebar.radio("Analysis Mode", ["Probability Only", "Risk (Frequency & Cost)"])
@@ -188,7 +188,7 @@ with tab3:
 
 # === TAB 4: FILE ===
 with tab4:
-    st.subheader("💾 File Ops")
+    st.subheader("File Ops")
     json_str = json.dumps(st.session_state.tree_nodes, indent=2)
     st.download_button("Download Tree (.json)", json_str, "risk_tree.json", "application/json")
 
@@ -204,7 +204,7 @@ with tab4:
             st.error("Error loading file.")
 
 # --- MAIN CANVAS ---
-title_prefix = "💰 Quantitative Risk" if is_risk_mode else "🛡️ Event Tree"
+title_prefix = "Quantitative Risk" if is_risk_mode else "Event Tree"
 st.title(f"{title_prefix} Analysis")
 
 dot = graphviz.Digraph()
@@ -214,12 +214,17 @@ dot.attr('node', fontname='Arial', fontsize='12')
 total_risk = 0.0
 
 for nid, n in st.session_state.tree_nodes.items():
-    # 1. ROOT NODE
+    # 1. ROOT NODE (Professional Engineering Style)
     if n['type'] == 'root':
-        lbl = f"{n['name']}\n(Start)"
+        lbl = f"{n['name']}"
         if is_risk_mode:
             lbl += f"\nFreq: {n.get('freq', 1.0)}/yr"
-        dot.node(nid, lbl, shape='box', style='rounded,filled', fillcolor='#E3F2FD', color='#1565C0')
+
+        # Mrecord gives slightly rounded corners, distinct from standard boxes
+        # penwidth=2 makes the border thicker/bolder
+        # fillcolor is a neutral, professional grey
+        dot.node(nid, lbl, shape='Mrecord', style='filled,rounded', fillcolor='#EEEEEE', color='#222222',
+                 penwidth='2.0')
 
     # 2. OUTCOME NODE
     elif n['type'] == 'outcome':
@@ -260,7 +265,7 @@ st.graphviz_chart(dot)
 
 # --- SUMMARY METRICS ---
 if is_risk_mode:
-    st.markdown("### 📊 Annual Risk Summary")
+    st.markdown("### Annual Risk Summary")
     c1, c2 = st.columns(2)
     c1.metric("Total Annual Risk (Expected Loss)", f"${total_risk:,.2f}")
 
