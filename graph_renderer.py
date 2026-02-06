@@ -7,12 +7,18 @@ def render_graph(is_risk_mode):
 
     # --- VISUAL SETUP ---
     # splines='ortho': Forces 90-degree lines.
-    # nodesep='0.8': Vertical space between branches.
-    # ranksep='1.5': Horizontal space (Critical for preventing 'floating' arrows).
-    dot.attr(rankdir='LR', splines='ortho', nodesep='0.8', ranksep='1.5')
+    # nodesep='1.2': (Increased) Vertical space between branches to prevent "staircase" lines.
+    # ranksep='2.5': (Increased) Horizontal space to prevent labels from breaking arrows.
+    # ordering='out': Forces 'Yes' branch to stay above 'No' branch consistently.
+    dot.attr(rankdir='LR', splines='ortho', nodesep='1.2', ranksep='2.5', ordering='out')
 
     # Global node settings
-    dot.attr('node', shape='rect', fontname='Arial', fontsize='12', margin='0.15', height='0.5')
+    # height='0.6': Fixed height ensures arrows always attach to the center.
+    dot.attr('node', shape='rect', fontname='Arial', fontsize='12', margin='0.15', height='0.6', style='filled')
+
+    # Global edge settings
+    # penwidth='1.5': Thicker lines for a more professional schematic look.
+    dot.attr('edge', fontname='Arial', fontsize='10', penwidth='1.5')
 
     nodes = st.session_state.tree_nodes
 
@@ -46,26 +52,25 @@ def render_graph(is_risk_mode):
             if "Loss" in n['name'] or "Fatality" in n['name']: color = '#FFEBEE'
             if "Safe" in n['name'] or "Minor" in n['name']: color = '#E8F5E9'
 
-            dot.node(nid, lbl, shape='note', style='filled', fillcolor=color)
+            dot.node(nid, lbl, shape='note', fillcolor=color)
 
         # 3. BARRIER NODE
         else:
-            dot.node(nid, f"{n['name']}\n(P: {n['prob']:.2f})", shape='box', style='filled', fillcolor='white')
+            dot.node(nid, f"{n['name']}\n(P: {n['prob']:.2f})", shape='box', fillcolor='white')
 
         # --- EDGE DRAWING ---
         if n['parent_id']:
             if n['parent_id'] in nodes:
                 p = nodes[n['parent_id']]
 
-                # CRITICAL VISUAL FIXES
-                # 1. tailport='e', headport='w': Forces lines to stick to the sides (Left-to-Right only).
-                # 2. constraint='true': Forces the tree hierarchy to remain rigid.
+                # CRITICAL: Force strict East->West connections
+                # This prevents the arrow from entering the top/bottom of a box.
                 edge_attrs = {'tailport': 'e', 'headport': 'w'}
 
-                # A. Connection from ROOT (The "Stem")
-                # We draw this as a neutral grey line, ignoring Yes/No logic.
+                # A. Connection from ROOT
                 if p['type'] == 'root':
-                    dot.edge(n['parent_id'], nid, color="#666666", penwidth='2.0', arrowsize='0.8', **edge_attrs)
+                    # Grey, thick neutral line
+                    dot.edge(n['parent_id'], nid, color="#666666", arrowsize='0.8', **edge_attrs)
 
                 # B. Standard Branches
                 else:
@@ -80,6 +85,6 @@ def render_graph(is_risk_mode):
 
                     lbl += f"\n({prob_val:.2f})"
 
-                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, fontsize='10', **edge_attrs)
+                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, **edge_attrs)
 
     return dot
