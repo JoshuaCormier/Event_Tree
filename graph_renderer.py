@@ -5,13 +5,15 @@ import streamlit as st
 def render_graph(is_risk_mode):
     dot = graphviz.Digraph()
 
-    # 1. VISUAL SETUP
-    # splines='ortho': Strictly orthogonal (right-angled) lines.
-    # nodesep='1.0': Increases vertical space between branches to prevent overlap.
-    # ranksep='1.4': Increases horizontal space to give lines room to turn.
-    dot.attr(rankdir='LR', splines='ortho', nodesep='1.0', ranksep='1.4')
+    # --- VISUAL SETUP ---
+    # splines='ortho': Forces 90-degree lines.
+    # nodesep='1.0': Critical! Increases vertical space so lines have room to turn between boxes.
+    # ranksep='2.0': Increases horizontal space for clear labels.
+    # ordering='out': Keeps the 'Yes' branch physically above the 'No' branch (usually).
+    dot.attr(rankdir='LR', splines='ortho', nodesep='1.0', ranksep='2.0', ordering='out')
 
-    dot.attr('node', fontname='Arial', fontsize='12')
+    # Global node settings
+    dot.attr('node', shape='rect', fontname='Arial', fontsize='12', margin='0.15', height='0.6')
 
     nodes = st.session_state.tree_nodes
 
@@ -23,6 +25,7 @@ def render_graph(is_risk_mode):
             lbl = f"{n['name']}"
             if is_risk_mode:
                 freq_val = n.get('freq', 1.0)
+                # Clean formatting for scientific vs standard notation
                 if freq_val < 0.001:
                     lbl += f"\nFreq: {freq_val:.2e}/yr"
                 else:
@@ -35,7 +38,6 @@ def render_graph(is_risk_mode):
         elif n['type'] == 'outcome':
             lbl = f"{n['name']}"
             if is_risk_mode:
-                # Use scientific notation for very small numbers to keep box size manageable
                 lbl += f"\nFreq: {n['path_freq']:.2e}/yr"
                 lbl += f"\nCost: ${n.get('cost', 0):,.0f}"
                 lbl += f"\nRisk: ${n.get('risk', 0):,.2f}/yr"
@@ -58,8 +60,8 @@ def render_graph(is_risk_mode):
             if n['parent_id'] in nodes:
                 p = nodes[n['parent_id']]
 
-                # Setup specific ports: Exit East (right), Enter West (left)
-                # This prevents the "cutting through boxes" issue
+                # CRITICAL FIX: Force arrows to exit East and enter West
+                # This ensures they only point left-to-right
                 edge_attrs = {'tailport': 'e', 'headport': 'w'}
 
                 # A. Connection from ROOT
@@ -70,14 +72,16 @@ def render_graph(is_risk_mode):
                 else:
                     if n['branch'] == "Success (Yes)":
                         lbl = "Yes"
-                        col = "#2E7D32"
+                        col = "#2E7D32"  # Green
                         prob_val = p['prob']
                     else:
                         lbl = "No"
-                        col = "#C62828"
+                        col = "#C62828"  # Red
                         prob_val = 1.0 - p['prob']
 
+                    # Add Probability to Label
                     lbl += f"\n({prob_val:.2f})"
+
                     dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, fontsize='10', **edge_attrs)
 
     return dot
