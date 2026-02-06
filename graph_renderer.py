@@ -5,11 +5,11 @@ import streamlit as st
 def render_graph(is_risk_mode):
     dot = graphviz.Digraph()
 
-    # VISUAL FIXES:
-    # 1. splines='polyline': Uses angled straight lines that route AROUND boxes better than ortho.
-    # 2. ranksep='1.2': Adds more horizontal space between steps.
-    # 3. nodesep='0.8': Adds more vertical space between branches.
-    dot.attr(rankdir='LR', splines='polyline', ranksep='1.2', nodesep='0.8')
+    # 1. VISUAL SETUP
+    # splines='ortho': Strictly orthogonal (right-angled) lines.
+    # nodesep='1.0': Increases vertical space between branches to prevent overlap.
+    # ranksep='1.4': Increases horizontal space to give lines room to turn.
+    dot.attr(rankdir='LR', splines='ortho', nodesep='1.0', ranksep='1.4')
 
     dot.attr('node', fontname='Arial', fontsize='12')
 
@@ -22,7 +22,6 @@ def render_graph(is_risk_mode):
         if n['type'] == 'root':
             lbl = f"{n['name']}"
             if is_risk_mode:
-                # Show scientific notation if number is very small (e.g. 5e-06)
                 freq_val = n.get('freq', 1.0)
                 if freq_val < 0.001:
                     lbl += f"\nFreq: {freq_val:.2e}/yr"
@@ -36,7 +35,8 @@ def render_graph(is_risk_mode):
         elif n['type'] == 'outcome':
             lbl = f"{n['name']}"
             if is_risk_mode:
-                lbl += f"\nFreq: {n['path_freq']:.2e}/yr"  # Scientific notation for space
+                # Use scientific notation for very small numbers to keep box size manageable
+                lbl += f"\nFreq: {n['path_freq']:.2e}/yr"
                 lbl += f"\nCost: ${n.get('cost', 0):,.0f}"
                 lbl += f"\nRisk: ${n.get('risk', 0):,.2f}/yr"
             else:
@@ -58,9 +58,13 @@ def render_graph(is_risk_mode):
             if n['parent_id'] in nodes:
                 p = nodes[n['parent_id']]
 
+                # Setup specific ports: Exit East (right), Enter West (left)
+                # This prevents the "cutting through boxes" issue
+                edge_attrs = {'tailport': 'e', 'headport': 'w'}
+
                 # A. Connection from ROOT
                 if p['type'] == 'root':
-                    dot.edge(n['parent_id'], nid, color="#666666", penwidth='1.5', arrowsize='0.8')
+                    dot.edge(n['parent_id'], nid, color="#666666", penwidth='1.5', arrowsize='0.8', **edge_attrs)
 
                 # B. Standard Connection
                 else:
@@ -74,6 +78,6 @@ def render_graph(is_risk_mode):
                         prob_val = 1.0 - p['prob']
 
                     lbl += f"\n({prob_val:.2f})"
-                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, fontsize='10')
+                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, fontsize='10', **edge_attrs)
 
     return dot
