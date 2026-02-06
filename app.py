@@ -13,7 +13,7 @@ calc.init_session_state()
 # --- SIDEBAR ---
 st.sidebar.title("Risk Manager")
 
-# View Mode Toggle (Visuals only now, doesn't hide data inputs)
+# View Mode Toggle
 mode = st.sidebar.radio("View Mode", ["Probability Only", "Risk (Frequency & Cost)"])
 is_risk_mode = (mode == "Risk (Frequency & Cost)")
 st.sidebar.markdown("---")
@@ -39,7 +39,6 @@ with tab1:
         n_prob = 0.0
         n_cost = 0.0
 
-        # ALWAYS show inputs, just label them clearly
         if n_type == "Barrier":
             n_prob = st.slider("Success Prob", 0.0, 1.0, 0.9, 0.01)
         elif n_type == "Outcome":
@@ -54,12 +53,12 @@ with tab1:
                 "cost": n_cost,
                 "parent_id": parent_id,
                 "branch": branch,
-                "freq": 0.0, "path_prob": 0.0, "path_freq": 0.0, "risk": 0.0  # Placeholders
+                "freq": 0.0, "path_prob": 0.0, "path_freq": 0.0, "risk": 0.0
             }
             calc.recalculate_tree()
             st.rerun()
 
-# TAB 2: EDIT (MAJOR UPGRADE)
+# TAB 2: EDIT (The Major Fix)
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
@@ -69,43 +68,58 @@ with tab2:
         node = nodes[e_id]
 
         # 1. Edit Name
-        e_name = st.text_input("Name", node['name'], key="edt_name")
+        st.markdown(f"**Editing: {node['name']}**")
+        e_name = st.text_input("Node Name (Label)", node['name'], key="edt_name")
 
-        # 2. Edit Type (The Fix for your Total Loss issue)
-        # We allow switching between 'event' (Barrier) and 'outcome'. Root is locked.
+        # 2. Edit Type (Barrier vs Outcome)
         current_type = node['type']
         if current_type != 'root':
             new_type = st.selectbox("Node Type", ["Barrier", "Outcome"],
                                     index=0 if current_type == 'event' else 1)
-            # Map back to internal type names
             e_type = "event" if new_type == "Barrier" else "outcome"
         else:
             e_type = "root"
-            st.caption("Root node type cannot be changed.")
+            st.info("The Start Node is the root of the tree.")
 
-        # 3. Dynamic Inputs (ALWAYS VISIBLE NOW)
+        st.divider()
+
+        # 3. CONTEXT AWARE INPUTS
+        # Initialize defaults
         e_prob = node.get('prob', 0.0)
         e_freq = node.get('freq', 1.0)
         e_cost = node.get('cost', 0.0)
 
-        st.markdown("#### Values")
-
+        # CASE A: THE ROOT (Start)
         if e_type == 'root':
-            e_freq = st.number_input("Initiating Frequency (Events/Year)", value=float(e_freq), step=0.01,
-                                     format="%.5f")
-            st.caption("Example: 1 = Once a year. 0.1 = Once every 10 years.")
+            st.markdown("### 1. Frequency Input")
+            e_freq = st.number_input("How often does this start? (Events/Year)",
+                                     value=float(e_freq), step=0.01, format="%.5f")
+            st.caption("Example: 1.0 = Once a year. 0.01 = Once every 100 years.")
 
+        # CASE B: BARRIER (Middle Step)
         elif e_type == 'event':
-            e_prob = st.slider("Success Probability", 0.0, 1.0, float(e_prob), 0.01, key="edt_prob")
-            st.caption("Probability that this barrier WORKS.")
+            st.markdown("### 1. Probability Input")
+            e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01, key="edt_prob")
 
+            st.markdown("### 2. Frequency (Calculated)")
+            st.info(f"Based on previous steps, this event happens **{node['path_freq']:.6f} times/year**.")
+
+        # CASE C: OUTCOME (End Result)
         elif e_type == 'outcome':
-            e_cost = st.number_input("Cost Consequence ($)", value=float(e_cost), step=1000.0, key="edt_cost")
-            st.caption("Total financial loss if this outcome occurs.")
+            st.markdown("### 1. Cost Input")
+            e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0, key="edt_cost")
 
-        if st.button("Update Node"):
+            st.markdown("### 2. Risk Calculation")
+            freq = node['path_freq']
+            risk = freq * e_cost
+            st.write(f"Frequency: **{freq:.6f}/yr**")
+            st.write(f"Cost: **${e_cost:,.2f}**")
+            st.metric("Annual Risk", f"${risk:,.2f}")
+
+        # Update Button
+        if st.button("Save Changes"):
             nodes[e_id]['name'] = e_name
-            nodes[e_id]['type'] = e_type  # Save the new type
+            nodes[e_id]['type'] = e_type
             nodes[e_id]['prob'] = e_prob
             nodes[e_id]['freq'] = e_freq
             nodes[e_id]['cost'] = e_cost
