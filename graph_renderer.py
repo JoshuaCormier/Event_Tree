@@ -4,7 +4,13 @@ import streamlit as st
 
 def render_graph(is_risk_mode):
     dot = graphviz.Digraph()
-    dot.attr(rankdir='LR', splines='ortho')
+
+    # VISUAL FIXES:
+    # 1. splines='polyline': Uses angled straight lines that route AROUND boxes better than ortho.
+    # 2. ranksep='1.2': Adds more horizontal space between steps.
+    # 3. nodesep='0.8': Adds more vertical space between branches.
+    dot.attr(rankdir='LR', splines='polyline', ranksep='1.2', nodesep='0.8')
+
     dot.attr('node', fontname='Arial', fontsize='12')
 
     nodes = st.session_state.tree_nodes
@@ -16,9 +22,13 @@ def render_graph(is_risk_mode):
         if n['type'] == 'root':
             lbl = f"{n['name']}"
             if is_risk_mode:
-                lbl += f"\nFreq: {n.get('freq', 1.0)}/yr"
+                # Show scientific notation if number is very small (e.g. 5e-06)
+                freq_val = n.get('freq', 1.0)
+                if freq_val < 0.001:
+                    lbl += f"\nFreq: {freq_val:.2e}/yr"
+                else:
+                    lbl += f"\nFreq: {freq_val:.4f}/yr"
 
-            # Using 'box' instead of Mrecord to ensure compatibility and visibility
             dot.node(nid, lbl, shape='box', style='filled,rounded',
                      fillcolor='#EEEEEE', color='#222222', penwidth='2')
 
@@ -26,7 +36,7 @@ def render_graph(is_risk_mode):
         elif n['type'] == 'outcome':
             lbl = f"{n['name']}"
             if is_risk_mode:
-                lbl += f"\nFreq: {n['path_freq']:.4f}/yr"
+                lbl += f"\nFreq: {n['path_freq']:.2e}/yr"  # Scientific notation for space
                 lbl += f"\nCost: ${n.get('cost', 0):,.0f}"
                 lbl += f"\nRisk: ${n.get('risk', 0):,.2f}/yr"
             else:
@@ -45,13 +55,12 @@ def render_graph(is_risk_mode):
 
         # --- EDGE DRAWING ---
         if n['parent_id']:
-            # We look up the PARENT to check if it's the root
             if n['parent_id'] in nodes:
                 p = nodes[n['parent_id']]
 
-                # A. Connection from ROOT (No Yes/No text)
+                # A. Connection from ROOT
                 if p['type'] == 'root':
-                    dot.edge(n['parent_id'], nid, color="#666666", penwidth='1.5')
+                    dot.edge(n['parent_id'], nid, color="#666666", penwidth='1.5', arrowsize='0.8')
 
                 # B. Standard Connection
                 else:
@@ -65,6 +74,6 @@ def render_graph(is_risk_mode):
                         prob_val = 1.0 - p['prob']
 
                     lbl += f"\n({prob_val:.2f})"
-                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col)
+                    dot.edge(n['parent_id'], nid, label=lbl, color=col, fontcolor=col, fontsize='10')
 
     return dot
