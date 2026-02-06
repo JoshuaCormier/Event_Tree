@@ -6,19 +6,19 @@ def render_graph(is_risk_mode):
     dot = graphviz.Digraph()
 
     # --- VISUAL SETUP ---
-    # splines='ortho': Forces 90-degree lines.
-    # nodesep='1.2': (Increased) Vertical space between branches to prevent "staircase" lines.
-    # ranksep='2.5': (Increased) Horizontal space to prevent labels from breaking arrows.
-    # ordering='out': Forces 'Yes' branch to stay above 'No' branch consistently.
-    dot.attr(rankdir='LR', splines='ortho', nodesep='1.2', ranksep='2.5', ordering='out')
+    # splines='polyline': The robust fix. Draws straight, angled segments (like a circuit board).
+    #                     This prevents the "arrow inside box" glitch completely.
+    # nodesep='1.0': Good vertical separation.
+    # ranksep='2.0': Horizontal separation to allow lines to angle cleanly.
+    dot.attr(rankdir='LR', splines='polyline', nodesep='1.0', ranksep='2.0')
 
     # Global node settings
-    # height='0.6': Fixed height ensures arrows always attach to the center.
-    dot.attr('node', shape='rect', fontname='Arial', fontsize='12', margin='0.15', height='0.6', style='filled')
+    # shape='box': Standard rectangle.
+    # style='filled': Solid background.
+    dot.attr('node', shape='box', fontname='Arial', fontsize='12', margin='0.15', height='0.6', style='filled')
 
     # Global edge settings
-    # penwidth='1.5': Thicker lines for a more professional schematic look.
-    dot.attr('edge', fontname='Arial', fontsize='10', penwidth='1.5')
+    dot.attr('edge', fontname='Arial', fontsize='10', penwidth='1.5', arrowsize='0.8')
 
     nodes = st.session_state.tree_nodes
 
@@ -63,14 +63,15 @@ def render_graph(is_risk_mode):
             if n['parent_id'] in nodes:
                 p = nodes[n['parent_id']]
 
-                # CRITICAL: Force strict East->West connections
-                # This prevents the arrow from entering the top/bottom of a box.
+                # CRITICAL: 'headport=w' and 'tailport=e'
+                # This Forces the logical flow: Exit Right (East) -> Enter Left (West)
+                # Combined with 'polyline', this creates the "circuit trace" look.
                 edge_attrs = {'tailport': 'e', 'headport': 'w'}
 
                 # A. Connection from ROOT
                 if p['type'] == 'root':
-                    # Grey, thick neutral line
-                    dot.edge(n['parent_id'], nid, color="#666666", arrowsize='0.8', **edge_attrs)
+                    # Neutral Grey Line
+                    dot.edge(n['parent_id'], nid, color="#666666", **edge_attrs)
 
                 # B. Standard Branches
                 else:
