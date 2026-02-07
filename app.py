@@ -19,27 +19,31 @@ st.sidebar.markdown("---")
 
 tab1, tab2, tab3, tab4 = st.sidebar.tabs(["Add", "Edit", "Delete", "File"])
 
-# TAB 1: ADD (UPDATED WITH VALIDATION)
+# TAB 1: ADD
 with tab1:
     st.subheader("Add Event")
     nodes = st.session_state.tree_nodes
+    # Filter out outcomes from potential parents
     valid_parents = {k: v['name'] for k, v in nodes.items() if v['type'] != 'outcome'}
 
     if not valid_parents:
         st.error("No valid parents.")
     else:
-        parent_id = st.selectbox("Parent:", list(valid_parents.keys()), format_func=lambda x: valid_parents[x])
+        # Helper to show unique names in dropdown
+        def get_unique_label(nid):
+            n = nodes[nid]
+            return f"{n['name']} ({nid[:4]})"
 
-        # --- NEW VALIDATION LOGIC ---
-        # Check if Parent is Root and already has a child
+
+        parent_id = st.selectbox("Parent:", list(valid_parents.keys()), format_func=get_unique_label)
+
+        # Validation: Root can only have 1 child
         parent_node = nodes[parent_id]
         has_child = any(n['parent_id'] == parent_id for n in nodes.values())
 
         if parent_node['type'] == 'root' and has_child:
-            st.warning(
-                "⚠️ The Start Node can only connect to ONE first barrier (The System). You cannot add a second branch here.")
-            st.info("Tip: Add your branching (Success/Failure) to the *Barrier* node, not the Start node.")
-            st.button("Add Node", disabled=True)  # Lock the button
+            st.warning("⚠️ The Start Node can only connect to ONE first barrier.")
+            st.button("Add Node", disabled=True)
         else:
             c1, c2 = st.columns(2)
             branch = c1.radio("Path?", ["Success (Yes)", "Failure (No)"])
@@ -68,18 +72,34 @@ with tab1:
                 calc.recalculate_tree()
                 st.rerun()
 
-# TAB 2: EDIT
+# TAB 2: EDIT (FIXED FOR DUPLICATES)
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
     if nodes:
-        opts = {k: v['name'] for k, v in nodes.items()}
-        e_id = st.selectbox("Select Node to Edit:", list(opts.keys()), format_func=lambda x: opts[x])
+        # Create a dictionary of ID -> "Name (ParentName)" to ensure uniqueness
+        edit_opts = {}
+        for nid, n in nodes.items():
+            if n['type'] == 'root':
+                label = f"ROOT: {n['name']}"
+            else:
+                # Find parent name for context
+                p_name = nodes[n['parent_id']]['name'] if n['parent_id'] in nodes else "Unknown"
+                branch = "Yes" if n['branch'] == "Success (Yes)" else "No"
+                label = f"{n['name']} (from {p_name} via {branch})"
+            edit_opts[nid] = label
+
+        # The Selectbox now uses the Unique Keys (IDs) but shows the Descriptive Label
+        e_id = st.selectbox("Select Node to Edit:", list(edit_opts.keys()), format_func=lambda x: edit_opts[x])
+
         node = nodes[e_id]
 
         st.markdown(f"**Editing: {node['name']}**")
+
+        # 1. Edit Name
         e_name = st.text_input("Node Name (Label)", node['name'], key="edt_name")
 
+        # 2. Edit Type
         current_type = node['type']
         if current_type != 'root':
             new_type = st.selectbox("Node Type", ["Barrier", "Outcome"],
@@ -87,10 +107,11 @@ with tab2:
             e_type = "event" if new_type == "Barrier" else "outcome"
         else:
             e_type = "root"
-            st.info("The Start Node is the root of the tree.")
+            st.info("Root node type cannot be changed.")
 
         st.divider()
 
+        # 3. Values
         e_prob = node.get('prob', 0.0)
         e_freq = node.get('freq', 1.0)
         e_cost = node.get('cost', 0.0)
@@ -122,7 +143,13 @@ with tab2:
 # TAB 3: DELETE
 with tab3:
     st.subheader("Delete")
-    d_opts = {k: v['name'] for k, v in st.session_state.tree_nodes.items() if v['type'] != 'root'}
+    # Use the same unique label logic for deletion
+    d_opts = {}
+    for nid, n in nodes.items():
+        if n['type'] != 'root':
+            p_name = nodes[n['parent_id']]['name'] if n['parent_id'] in nodes else "Unknown"
+            d_opts[nid] = f"{n['name']} (Attached to: {p_name})"
+
     if d_opts:
         d_id = st.selectbox("Delete:", list(d_opts.keys()), format_func=lambda x: d_opts[x])
         if st.button("Delete Branch", type="primary"):
