@@ -10,6 +10,46 @@ st.set_page_config(page_title="Event Tree Manager", layout="wide")
 # Initialize State
 calc.init_session_state()
 
+
+# --- CALLBACK FUNCTIONS (The Fix) ---
+# These run immediately when you change a value, forcing a save BEFORE the page reloads.
+
+def update_name(node_id):
+    key = f"name_{node_id}"
+    new_val = st.session_state[key]
+    st.session_state.tree_nodes[node_id]['name'] = new_val
+
+
+def update_cost(node_id):
+    key = f"cost_{node_id}"
+    new_val = st.session_state[key]
+    st.session_state.tree_nodes[node_id]['cost'] = new_val
+    calc.recalculate_tree()
+
+
+def update_prob(node_id):
+    key = f"prob_{node_id}"
+    new_val = st.session_state[key]
+    st.session_state.tree_nodes[node_id]['prob'] = new_val
+    calc.recalculate_tree()
+
+
+def update_freq(node_id):
+    key = f"freq_{node_id}"
+    new_val = st.session_state[key]
+    st.session_state.tree_nodes[node_id]['freq'] = new_val
+    calc.recalculate_tree()
+
+
+def update_type(node_id):
+    key = f"type_{node_id}"
+    new_display_type = st.session_state[key]
+    # Convert display name back to internal type
+    internal_type = "event" if new_display_type == "Barrier" else "outcome"
+    st.session_state.tree_nodes[node_id]['type'] = internal_type
+    calc.recalculate_tree()
+
+
 # --- SIDEBAR ---
 st.sidebar.title("Risk Manager")
 
@@ -72,12 +112,12 @@ with tab1:
                     calc.recalculate_tree()
                     st.rerun()
 
-# TAB 2: EDIT (NOW USING FORMS TO PREVENT DATA LOSS)
+# TAB 2: EDIT (NOW USING LIVE CALLBACKS)
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
     if nodes:
-        # 1. Unique Dropdown Labels
+        # Unique Selection Logic
         edit_opts = {}
         for nid, n in nodes.items():
             if n['type'] == 'root':
@@ -88,66 +128,52 @@ with tab2:
                 label = f"{n['name']} (from {p_name} via {branch})"
             edit_opts[nid] = label
 
-        # Selectbox acts as a filter, separate from the form
         e_id = st.selectbox("Select Node to Edit:", list(edit_opts.keys()), format_func=lambda x: edit_opts[x])
         node = nodes[e_id]
 
         st.markdown(f"**Editing: {node['name']}**")
+        st.caption("Changes save automatically when you press Enter or click away.")
 
-        # --- THE FORM START ---
-        # Everything inside here waits until you click "Save Changes"
-        with st.form(key=f"edit_form_{e_id}"):
+        # 1. LIVE NAME EDIT
+        st.text_input("Node Name", value=node['name'], key=f"name_{e_id}", on_change=update_name, args=(e_id,))
 
-            # 2. Edit Name
-            e_name = st.text_input("Node Name (Label)", node['name'])
+        # 2. LIVE TYPE EDIT
+        current_type = node['type']
+        if current_type != 'root':
+            display_index = 0 if current_type == 'event' else 1
+            st.selectbox("Node Type", ["Barrier", "Outcome"], index=display_index,
+                         key=f"type_{e_id}", on_change=update_type, args=(e_id,))
+            e_type = "event" if st.session_state[f"type_{e_id}"] == "Barrier" else "outcome"
+        else:
+            e_type = "root"
+            st.info("Root node type cannot be changed.")
 
-            # 3. Edit Type
-            current_type = node['type']
-            if current_type != 'root':
-                new_type_selection = st.selectbox("Node Type", ["Barrier", "Outcome"],
-                                                  index=0 if current_type == 'event' else 1)
-                e_type = "event" if new_type_selection == "Barrier" else "outcome"
-            else:
-                e_type = "root"
-                st.info("Root node type cannot be changed.")
+        st.divider()
 
-            st.divider()
+        # 3. LIVE VALUE EDITING
+        if e_type == 'root':
+            st.markdown("### 1. Frequency Input")
+            st.number_input("Events/Year", value=float(node.get('freq', 1.0)), step=0.01, format="%.5f",
+                            key=f"freq_{e_id}", on_change=update_freq, args=(e_id,))
 
-            # 4. Values
-            e_prob = node.get('prob', 0.0)
-            e_freq = node.get('freq', 1.0)
-            e_cost = node.get('cost', 0.0)
+        elif e_type == 'event':
+            st.markdown("### 1. Probability Input")
+            st.slider("Probability of Success", 0.0, 1.0, float(node.get('prob', 0.9)), 0.01,
+                      key=f"prob_{e_id}", on_change=update_prob, args=(e_id,))
 
-            if e_type == 'root':
-                st.markdown("### 1. Frequency Input")
-                e_freq = st.number_input("Events/Year", value=float(e_freq), step=0.01, format="%.5f")
+            st.markdown("### 2. Frequency (Calculated)")
+            st.caption(f"Rate: {node['path_freq']:.6f} /yr")
 
-            elif e_type == 'event':
-                st.markdown("### 1. Probability Input")
-                e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01)
-                st.markdown("### 2. Frequency (Calculated)")
-                st.caption(f"Rate: {node['path_freq']:.6f} /yr")
+        elif e_type == 'outcome':
+            st.markdown("### 1. Cost Input")
+            # The 'on_change' here ensures the value is saved immediately when you hit Enter.
+            st.number_input("Financial Cost ($)", value=float(node.get('cost', 0.0)), step=1000.0,
+                            key=f"cost_{e_id}", on_change=update_cost, args=(e_id,))
 
-            elif e_type == 'outcome':
-                st.markdown("### 1. Cost Input")
-                # IMPORTANT: Value is pulled directly from node state initially
-                e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0)
-
-                st.markdown("### 2. Risk Calculation")
-                st.caption(f"Frequency: {node['path_freq']:.2e} /yr")
-                st.caption(f"Current Risk: ${node.get('risk', 0):,.2f}")
-
-            # 5. SUBMIT BUTTON
-            saved = st.form_submit_button("Save Changes")
-
-            if saved:
-                nodes[e_id]['name'] = e_name
-                nodes[e_id]['type'] = e_type
-                nodes[e_id]['prob'] = e_prob
-                nodes[e_id]['freq'] = e_freq
-                nodes[e_id]['cost'] = e_cost
-                calc.recalculate_tree()
-                st.rerun()
+            st.markdown("### 2. Risk Calculation")
+            current_risk = node['path_freq'] * node.get('cost', 0.0)
+            st.caption(f"Frequency: {node['path_freq']:.2e} /yr")
+            st.metric("Annual Risk", f"${current_risk:,.2f}")
 
 # TAB 3: DELETE
 with tab3:
