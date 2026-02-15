@@ -23,13 +23,11 @@ tab1, tab2, tab3, tab4 = st.sidebar.tabs(["Add", "Edit", "Delete", "File"])
 with tab1:
     st.subheader("Add Event")
     nodes = st.session_state.tree_nodes
-    # Filter out outcomes from potential parents
     valid_parents = {k: v['name'] for k, v in nodes.items() if v['type'] != 'outcome'}
 
     if not valid_parents:
         st.error("No valid parents.")
     else:
-        # Helper to show unique names in dropdown
         def get_unique_label(nid):
             n = nodes[nid]
             return f"{n['name']} ({nid[:4]})"
@@ -37,7 +35,6 @@ with tab1:
 
         parent_id = st.selectbox("Parent:", list(valid_parents.keys()), format_func=get_unique_label)
 
-        # Validation: Root can only have 1 child
         parent_node = nodes[parent_id]
         has_child = any(n['parent_id'] == parent_id for n in nodes.values())
 
@@ -72,38 +69,36 @@ with tab1:
                 calc.recalculate_tree()
                 st.rerun()
 
-# TAB 2: EDIT (FIXED FOR DUPLICATES)
+# TAB 2: EDIT (FIXED WITH DYNAMIC KEYS)
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
     if nodes:
-        # Create a dictionary of ID -> "Name (ParentName)" to ensure uniqueness
+        # 1. Unique Dropdown Labels
         edit_opts = {}
         for nid, n in nodes.items():
             if n['type'] == 'root':
                 label = f"ROOT: {n['name']}"
             else:
-                # Find parent name for context
                 p_name = nodes[n['parent_id']]['name'] if n['parent_id'] in nodes else "Unknown"
                 branch = "Yes" if n['branch'] == "Success (Yes)" else "No"
                 label = f"{n['name']} (from {p_name} via {branch})"
             edit_opts[nid] = label
 
-        # The Selectbox now uses the Unique Keys (IDs) but shows the Descriptive Label
         e_id = st.selectbox("Select Node to Edit:", list(edit_opts.keys()), format_func=lambda x: edit_opts[x])
-
         node = nodes[e_id]
 
         st.markdown(f"**Editing: {node['name']}**")
 
-        # 1. Edit Name
-        e_name = st.text_input("Node Name (Label)", node['name'], key="edt_name")
+        # 2. Edit Name (Unique Key)
+        e_name = st.text_input("Node Name (Label)", node['name'], key=f"name_{e_id}")
 
-        # 2. Edit Type
+        # 3. Edit Type
         current_type = node['type']
         if current_type != 'root':
             new_type = st.selectbox("Node Type", ["Barrier", "Outcome"],
-                                    index=0 if current_type == 'event' else 1)
+                                    index=0 if current_type == 'event' else 1,
+                                    key=f"type_{e_id}")
             e_type = "event" if new_type == "Barrier" else "outcome"
         else:
             e_type = "root"
@@ -111,27 +106,32 @@ with tab2:
 
         st.divider()
 
-        # 3. Values
+        # 4. Values (CRITICAL FIX: Dynamic keys like 'cost_1234')
         e_prob = node.get('prob', 0.0)
         e_freq = node.get('freq', 1.0)
         e_cost = node.get('cost', 0.0)
 
         if e_type == 'root':
             st.markdown("### 1. Frequency Input")
-            e_freq = st.number_input("Events/Year", value=float(e_freq), step=0.01, format="%.5f")
+            e_freq = st.number_input("Events/Year", value=float(e_freq), step=0.01, format="%.5f", key=f"freq_{e_id}")
 
         elif e_type == 'event':
             st.markdown("### 1. Probability Input")
-            e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01, key="edt_prob")
+            e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01, key=f"prob_{e_id}")
             st.markdown("### 2. Frequency (Calculated)")
             st.info(f"Rate: **{node['path_freq']:.6f} /yr**")
 
         elif e_type == 'outcome':
             st.markdown("### 1. Cost Input")
-            e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0, key="edt_cost")
-            st.metric("Annual Risk", f"${node['path_freq'] * e_cost:,.2f}")
+            # Using key=f"cost_{e_id}" ensures this input belongs ONLY to this specific node
+            e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0, key=f"cost_{e_id}")
 
-        if st.button("Save Changes"):
+            st.markdown("### 2. Risk Calculation")
+            risk = node['path_freq'] * e_cost
+            st.write(f"Frequency: **{node['path_freq']:.2e} /yr**")
+            st.metric("Annual Risk", f"${risk:,.2f}")
+
+        if st.button("Save Changes", key=f"save_{e_id}"):
             nodes[e_id]['name'] = e_name
             nodes[e_id]['type'] = e_type
             nodes[e_id]['prob'] = e_prob
@@ -143,7 +143,6 @@ with tab2:
 # TAB 3: DELETE
 with tab3:
     st.subheader("Delete")
-    # Use the same unique label logic for deletion
     d_opts = {}
     for nid, n in nodes.items():
         if n['type'] != 'root':
