@@ -42,34 +42,37 @@ with tab1:
             st.warning("⚠️ The Start Node can only connect to ONE first barrier.")
             st.button("Add Node", disabled=True)
         else:
-            c1, c2 = st.columns(2)
-            branch = c1.radio("Path?", ["Success (Yes)", "Failure (No)"])
-            n_type = c2.radio("Type?", ["Barrier", "Outcome"])
-            n_name = st.text_input("Name", "New Event")
+            with st.form("add_node_form"):
+                c1, c2 = st.columns(2)
+                branch = c1.radio("Path?", ["Success (Yes)", "Failure (No)"])
+                n_type = c2.radio("Type?", ["Barrier", "Outcome"])
+                n_name = st.text_input("Name", "New Event")
 
-            n_prob = 0.0
-            n_cost = 0.0
+                n_prob = 0.0
+                n_cost = 0.0
 
-            if n_type == "Barrier":
-                n_prob = st.slider("Success Prob", 0.0, 1.0, 0.9, 0.01)
-            elif n_type == "Outcome":
-                n_cost = st.number_input("Cost Consequence ($)", value=0.0, step=1000.0)
+                if n_type == "Barrier":
+                    n_prob = st.slider("Success Prob", 0.0, 1.0, 0.9, 0.01)
+                elif n_type == "Outcome":
+                    n_cost = st.number_input("Cost Consequence ($)", value=0.0, step=1000.0)
 
-            if st.button("Add Node"):
-                new_id = str(uuid.uuid4())[:8]
-                st.session_state.tree_nodes[new_id] = {
-                    "name": n_name,
-                    "type": "outcome" if n_type == "Outcome" else "event",
-                    "prob": n_prob,
-                    "cost": n_cost,
-                    "parent_id": parent_id,
-                    "branch": branch,
-                    "freq": 0.0, "path_prob": 0.0, "path_freq": 0.0, "risk": 0.0
-                }
-                calc.recalculate_tree()
-                st.rerun()
+                submitted = st.form_submit_button("Add Node")
 
-# TAB 2: EDIT (FIXED WITH DYNAMIC KEYS)
+                if submitted:
+                    new_id = str(uuid.uuid4())[:8]
+                    st.session_state.tree_nodes[new_id] = {
+                        "name": n_name,
+                        "type": "outcome" if n_type == "Outcome" else "event",
+                        "prob": n_prob,
+                        "cost": n_cost,
+                        "parent_id": parent_id,
+                        "branch": branch,
+                        "freq": 0.0, "path_prob": 0.0, "path_freq": 0.0, "risk": 0.0
+                    }
+                    calc.recalculate_tree()
+                    st.rerun()
+
+# TAB 2: EDIT (NOW USING FORMS TO PREVENT DATA LOSS)
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
@@ -85,60 +88,66 @@ with tab2:
                 label = f"{n['name']} (from {p_name} via {branch})"
             edit_opts[nid] = label
 
+        # Selectbox acts as a filter, separate from the form
         e_id = st.selectbox("Select Node to Edit:", list(edit_opts.keys()), format_func=lambda x: edit_opts[x])
         node = nodes[e_id]
 
         st.markdown(f"**Editing: {node['name']}**")
 
-        # 2. Edit Name (Unique Key)
-        e_name = st.text_input("Node Name (Label)", node['name'], key=f"name_{e_id}")
+        # --- THE FORM START ---
+        # Everything inside here waits until you click "Save Changes"
+        with st.form(key=f"edit_form_{e_id}"):
 
-        # 3. Edit Type
-        current_type = node['type']
-        if current_type != 'root':
-            new_type = st.selectbox("Node Type", ["Barrier", "Outcome"],
-                                    index=0 if current_type == 'event' else 1,
-                                    key=f"type_{e_id}")
-            e_type = "event" if new_type == "Barrier" else "outcome"
-        else:
-            e_type = "root"
-            st.info("Root node type cannot be changed.")
+            # 2. Edit Name
+            e_name = st.text_input("Node Name (Label)", node['name'])
 
-        st.divider()
+            # 3. Edit Type
+            current_type = node['type']
+            if current_type != 'root':
+                new_type_selection = st.selectbox("Node Type", ["Barrier", "Outcome"],
+                                                  index=0 if current_type == 'event' else 1)
+                e_type = "event" if new_type_selection == "Barrier" else "outcome"
+            else:
+                e_type = "root"
+                st.info("Root node type cannot be changed.")
 
-        # 4. Values (CRITICAL FIX: Dynamic keys like 'cost_1234')
-        e_prob = node.get('prob', 0.0)
-        e_freq = node.get('freq', 1.0)
-        e_cost = node.get('cost', 0.0)
+            st.divider()
 
-        if e_type == 'root':
-            st.markdown("### 1. Frequency Input")
-            e_freq = st.number_input("Events/Year", value=float(e_freq), step=0.01, format="%.5f", key=f"freq_{e_id}")
+            # 4. Values
+            e_prob = node.get('prob', 0.0)
+            e_freq = node.get('freq', 1.0)
+            e_cost = node.get('cost', 0.0)
 
-        elif e_type == 'event':
-            st.markdown("### 1. Probability Input")
-            e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01, key=f"prob_{e_id}")
-            st.markdown("### 2. Frequency (Calculated)")
-            st.info(f"Rate: **{node['path_freq']:.6f} /yr**")
+            if e_type == 'root':
+                st.markdown("### 1. Frequency Input")
+                e_freq = st.number_input("Events/Year", value=float(e_freq), step=0.01, format="%.5f")
 
-        elif e_type == 'outcome':
-            st.markdown("### 1. Cost Input")
-            # Using key=f"cost_{e_id}" ensures this input belongs ONLY to this specific node
-            e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0, key=f"cost_{e_id}")
+            elif e_type == 'event':
+                st.markdown("### 1. Probability Input")
+                e_prob = st.slider("Probability of Success", 0.0, 1.0, float(e_prob), 0.01)
+                st.markdown("### 2. Frequency (Calculated)")
+                st.caption(f"Rate: {node['path_freq']:.6f} /yr")
 
-            st.markdown("### 2. Risk Calculation")
-            risk = node['path_freq'] * e_cost
-            st.write(f"Frequency: **{node['path_freq']:.2e} /yr**")
-            st.metric("Annual Risk", f"${risk:,.2f}")
+            elif e_type == 'outcome':
+                st.markdown("### 1. Cost Input")
+                # IMPORTANT: Value is pulled directly from node state initially
+                e_cost = st.number_input("Financial Cost ($)", value=float(e_cost), step=1000.0)
 
-        if st.button("Save Changes", key=f"save_{e_id}"):
-            nodes[e_id]['name'] = e_name
-            nodes[e_id]['type'] = e_type
-            nodes[e_id]['prob'] = e_prob
-            nodes[e_id]['freq'] = e_freq
-            nodes[e_id]['cost'] = e_cost
-            calc.recalculate_tree()
-            st.rerun()
+                st.markdown("### 2. Risk Calculation")
+                st.caption(f"Frequency: {node['path_freq']:.2e} /yr")
+                st.caption(f"Current Risk: ${node.get('risk', 0):,.2f}")
+
+            # 5. SUBMIT BUTTON
+            saved = st.form_submit_button("Save Changes")
+
+            if saved:
+                nodes[e_id]['name'] = e_name
+                nodes[e_id]['type'] = e_type
+                nodes[e_id]['prob'] = e_prob
+                nodes[e_id]['freq'] = e_freq
+                nodes[e_id]['cost'] = e_cost
+                calc.recalculate_tree()
+                st.rerun()
 
 # TAB 3: DELETE
 with tab3:
