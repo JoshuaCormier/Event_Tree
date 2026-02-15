@@ -7,6 +7,13 @@ import graph_renderer as rend
 # --- CONFIG ---
 st.set_page_config(page_title="Event Tree Manager", layout="wide")
 
+# Hide the default Streamlit form instruction with CSS (just in case)
+st.markdown("""
+<style>
+    [data-testid="stForm"] footer {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
 # Initialize State
 calc.init_session_state()
 
@@ -42,7 +49,8 @@ with tab1:
             st.warning("⚠️ The Start Node can only connect to ONE first barrier.")
             st.button("Add Node", disabled=True)
         else:
-            with st.form("add_node_form"):
+            # border=False removes the box and the "Press Enter" text
+            with st.form("add_node_form", border=False):
                 c1, c2 = st.columns(2)
                 branch = c1.radio("Path?", ["Success (Yes)", "Failure (No)"])
                 n_type = c2.radio("Type?", ["Barrier", "Outcome"])
@@ -54,6 +62,7 @@ with tab1:
                 if n_type == "Barrier":
                     n_prob = st.slider("Success Prob", 0.0, 1.0, 0.9, 0.01)
                 elif n_type == "Outcome":
+                    # Note: Do not use commas (e.g. 10000 not 10,000)
                     n_cost = st.number_input("Cost Consequence ($)", value=0.0, step=1000.0)
 
                 submitted = st.form_submit_button("Add Node")
@@ -72,12 +81,11 @@ with tab1:
                     calc.recalculate_tree()
                     st.rerun()
 
-# TAB 2: EDIT (The Bulletproof Fix)
+# TAB 2: EDIT
 with tab2:
     st.subheader("Edit Node")
     nodes = st.session_state.tree_nodes
     if nodes:
-        # 1. Selection Logic (Outside the form)
         edit_opts = {}
         for nid, n in nodes.items():
             if n['type'] == 'root':
@@ -88,17 +96,14 @@ with tab2:
                 label = f"{n['name']} (from {p_name} via {branch})"
             edit_opts[nid] = label
 
-        # We use a selectbox to pick the node.
-        # This is NOT in the form, so changing it refreshes the form below.
+        # Selector is OUTSIDE the form
         e_id = st.selectbox("Select Node to Edit:", list(edit_opts.keys()), format_func=lambda x: edit_opts[x])
         node = nodes[e_id]
 
         st.markdown(f"**Editing: {node['name']}**")
 
-        # 2. THE EDIT FORM
-        # By putting inputs inside a form, Streamlit waits for the button click
-        # to read the values. This solves the "typing disappears" bug.
-        with st.form(key=f"edit_form_{e_id}"):
+        # border=False removes the instruction text
+        with st.form(key=f"edit_form_{e_id}", border=False):
 
             # Name Edit
             new_name = st.text_input("Node Name", value=node['name'])
@@ -111,12 +116,10 @@ with tab2:
                 new_type = "event" if new_type_display == "Barrier" else "outcome"
             else:
                 new_type = "root"
-                # st.info("Root node type cannot be changed.")
 
             st.divider()
 
             # Value Inputs
-            # Initialize with current values
             new_prob = node.get('prob', 0.0)
             new_freq = node.get('freq', 1.0)
             new_cost = node.get('cost', 0.0)
@@ -132,25 +135,22 @@ with tab2:
 
             elif new_type == 'outcome':
                 st.markdown("### Cost Input")
-                # This input is now protected by the form. Typing here works perfectly.
+                # Reminder: Type numbers only (no commas)
                 new_cost = st.number_input("Financial Cost ($)", value=float(new_cost), step=1000.0)
 
                 current_risk = node['path_freq'] * new_cost
                 st.caption(f"Calculated Risk: ${current_risk:,.2f}")
 
-            # 3. SUBMIT BUTTON
-            # The values above are sent ONLY when this is clicked.
+            # SUBMIT BUTTON
             update_clicked = st.form_submit_button("Update Node")
 
             if update_clicked:
-                # Write to state
                 nodes[e_id]['name'] = new_name
                 nodes[e_id]['type'] = new_type
                 nodes[e_id]['prob'] = new_prob
                 nodes[e_id]['freq'] = new_freq
                 nodes[e_id]['cost'] = new_cost
 
-                # Recalculate
                 calc.recalculate_tree()
                 st.rerun()
 
